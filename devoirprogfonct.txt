@@ -1,0 +1,89 @@
+type term =
+  | Var of string
+  | Func of string * term list
+
+type substitution = (string * term) list (* liste de paires associant des variables à des termes*)
+
+let rec combinaison (l1 : term list) (l2 : term list) : (term * term) list =
+  match l1, l2 with
+  | a :: ax, b :: bx -> (a, b) :: combinaison ax bx
+  | _, _ -> []
+  
+(* verifie si a apparait dans t*)
+let rec occurence (a : string) (t : term) : bool =
+  match t with
+  | Var b -> a = b
+  | Func (_, s) -> List.exists (occurence a) s
+
+(* remplace occurences de variable x par s dans t *)
+let rec subst (s : term) (x : string) (t : term) : term =
+  match t with
+  | Var y -> if x = y then s else t
+  | Func (f, u) -> Func (f, List.map (subst s x) u) (* applique subst à chaque element de la liste*)
+
+(* applique substitution a un terme t*)
+let apply (s : substitution) (t : term) : term =
+  List.fold_right (fun (x, u) -> subst u x) s t
+
+    
+let rec unif (t1 : term) (t2 : term) =
+  match (t1, t2) with
+  | (Var a, Var b) ->
+      if a = b then (
+        Printf.printf "Unif(%s, %s) = %s\n" a b a;
+        []
+      ) else [(a, t2)]
+  | (Func (f, l1), Func (g, l2)) ->
+      if f = g && List.length l1 = List.length l2 then (* verification si meme symbole et meme arité*)
+        uniflist (combinaison l1 l2)
+      else (
+        Printf.printf "Non unifiable";
+        []
+      )
+  | ((Var a, (Func (_, _) as t)) | ((Func (_, _) as t), Var a)) ->
+      if occurence a t then ( (* verifie si variable apparait dans func*)
+        Printf.printf "Non unifiable";
+        []
+      ) else [(a, t)] (* substitution contenant la paire*)
+         
+     
+and uniflist (s : (term * term) list) : substitution = (* unifi chaque paire*)
+  match s with
+  | [] -> []
+  | (a, b) :: t ->
+      let t2 = uniflist t in
+      let t1 = unif (apply t2 a) (apply t2 b) in
+      t1 @ t2 (*renvoie concaténation substitution t1 avec t2*)
+    
+let rec anti_unif (t3 : term) (t4 : term) : term =
+  let liste = ref [] in (*stock couples de termes déja rencontrés *)
+
+  let rec anti_unif_helper (t3 : term) (t4 : term) : term =
+    match (t3, t4) with
+    | Func (f, l1), Func (g, l2) when f = g && List.length l1 = List.length l2 -> (*vérification même symbole et même arité*)
+        let args = List.map2 anti_unif_helper l1 l2 in (*application à chaque paire d'argument*)
+        Func (f, args) (* création nouveau terme func avec les resultats*)
+    | _ ->
+        let rec find_in_list l = (* cherche dans liste si couple déja présent sinon genere nouvelle variable*)
+          match l with
+          | [] -> None
+          | (pair, j) :: _ when pair = (t3, t4) -> Some j
+          | _ :: tl -> find_in_list tl
+        in
+        match find_in_list !liste with
+        | Some j -> Var ("Z" ^ string_of_int j) (*j =index*)
+        | None ->
+            let z = Var ("Z" ^ string_of_int (List.length !liste + 1)) in
+            liste := ((t3, t4), List.length !liste + 1) :: !liste;
+            z
+  in
+
+  anti_unif_helper t3 t4
+  
+    
+let t1 = Func ("f", [Var "x"; Var "x"; Func ("a", [])])
+let t2 = Func ("f", [Func ("a", []);  Func ("a", []) ;Var "y"])
+let result_unif= unif t1 t2 
+let result_anti_unif= anti_unif t1 t2
+    
+    
